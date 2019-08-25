@@ -29,9 +29,9 @@ struct LoanInfo {
 impl LoanInfo {
     fn payment(&self) -> f64 {
         let rate = self.rate / 12.;
-        let mut denom: f64 = (1. + rate).powi(self.period * -1).try_into().expect("Error");
-        denom = 1. - denom;
-        (rate * self.principal) / denom
+        let num = rate * (1. + rate).powi(self.period);
+        let denom = ((1. + rate).powi(self.period)) - 1.;
+        self.principal * (num / denom)
     }
 
     fn monthly_payment(&self) -> f64 {
@@ -58,7 +58,6 @@ struct PeriodInfo {
 
 impl fmt::Display for LoanInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        //        let payment = self.payment();
         write!(
             f,
             "principal: {}, rate: {}, period: {}, payment: {}, monthly payment: {}",
@@ -78,24 +77,26 @@ impl fmt::Display for PeriodInfo {
     }
 }
 
-fn amort_period(loan: &mut LoanInfo, n: i32) -> PeriodInfo {
-    let interest = loan.principal * loan.rate;
+fn amort_period(loan: &mut LoanInfo, n: i32, payment: f64) -> PeriodInfo {
+    println!("{}", payment);
+    let interest = loan.principal * (loan.rate / 12.);
     let upb = *&loan.principal;
-    let principal = interest - loan.payment();
+    let principal = payment - interest;
     loan.principal -= principal;
     PeriodInfo {
-        month: n.try_into().expect("error period info"),
-        upb: upb,
-        interest: interest,
-        principal: principal,
+        month: n.try_into().expect("Unable to convert period to months"),
+        upb,
+        interest,
+        principal,
         ending_upb: loan.principal,
     }
 }
 
 fn amort(loan: &mut LoanInfo) -> List {
+    let payment = loan.payment();
     let mut ret = Vec::new();
     for x in 1..=loan.period {
-        ret.push(amort_period(loan, x));
+        ret.push(amort_period(loan, x, payment));
     }
     List(ret)
 }
