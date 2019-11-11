@@ -1,13 +1,32 @@
 #[macro_use]
 extern crate clap;
+#[cfg(test)]
+#[macro_use]
+extern crate float_cmp;
 
 use std::convert::TryInto;
 use std::fmt::{self, Error, Formatter};
+use std::str::FromStr;
 
 use clap::{App, Arg};
 
 #[derive(Debug)]
 struct List(Vec<PeriodInfo>);
+
+#[derive(PartialEq, Debug)]
+pub enum OutputType {
+    File(String),
+    Stdout,
+}
+
+impl fmt::Display for OutputType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            OutputType::File(c) => write!(f, "File: {}", c),
+            OutputType::Stdout => write!(f, "stdout"),
+        }
+    }
+}
 
 impl List {
     fn last(&mut self) -> Option<&PeriodInfo> {
@@ -70,10 +89,7 @@ impl fmt::Display for LoanInfo {
         write!(
             f,
             "principal: {}, rate: {}, period: {}, payment: {}",
-            self.principal,
-            self.rate,
-            self.period,
-            self.payment,
+            self.principal, self.rate, self.period, self.payment,
         )
     }
 }
@@ -92,14 +108,9 @@ fn payment(rate: f64, period: i32, principal: f64) -> f64 {
 }
 
 fn amort_period(loan: &mut LoanInfo, n: i32, payment: f64) -> PeriodInfo {
-    println!("{}", payment);
-//    let interest = loan.princpal * (loan.rate / 12.);
     let interest = loan.principal * loan.rate;
-    println!("interest: {}", interest);
     let upb = *&loan.principal;
-    println!("UPB: {}", upb);
     let principal = payment - interest;
-    println!("Principal: {}", principal);
     loan.principal -= principal;
     PeriodInfo {
         month: n.try_into().expect("Unable to convert period to months"),
@@ -127,24 +138,30 @@ fn main() {
             Arg::with_name("principal")
                 .short("p")
                 .long("principal")
-                .help("principal amount")
+                .help("principal amount of the loan")
                 .required(true)
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("rate")
                 .short("r")
-                .long("rate")
-                .help("interest rate")
+                .long("interest-rate")
+                .help("the annual interest rate")
                 .required(true)
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("period")
+            Arg::with_name("periods")
                 .short("n")
-                .long("period")
-                .help("length of loan")
+                .long("periods")
+                .help("length of loan in terms of months")
                 .required(true)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("output")
+                .short("o")
+                .long("output")
                 .takes_value(true),
         )
         .get_matches();
@@ -152,6 +169,14 @@ fn main() {
     let principal = value_t!(matches, "principal", f64).unwrap();
     let rate = value_t!(matches, "rate", f64).unwrap();
     let period = value_t!(matches, "period", i32).unwrap();
+    let output: Option<&str> = Option::from(matches.value_of("output").unwrap());
+    let output_type: OutputType = match output {
+        Some(ref e) => OutputType::File(e.to_string()),
+        None => OutputType::Stdout,
+    };
+
+    println!("output type: {}", output_type);
+
     let loan = &mut LoanInfo::new(principal, rate, period);
     println!("{}", loan);
 
@@ -161,11 +186,9 @@ fn main() {
 
 #[cfg(test)]
 mod test {
-    #[macro_use]
-    extern crate float_cmp;
-
-    use crate::{LoanInfo, amort_period, amort};
     use itertools::enumerate;
+
+    use crate::{amort, amort_period, LoanInfo};
 
     #[test]
     fn test_amort_period() {
@@ -173,10 +196,30 @@ mod test {
         println!("{}", loan);
         let payment = loan.payment;
         let period_info = amort_period(loan, 1, payment);
-        assert!(approx_eq!(f64, period_info.interest, 416.67, epsilon = 0.01));
-        assert!(approx_eq!(f64, period_info.principal, 120.15, epsilon = 0.01));
-        assert!(approx_eq!(f64, period_info.principal + period_info.interest, payment, epsilon = 0.01));
-        assert!(approx_eq!(f64, loan.principal, period_info.ending_upb, epsilon = 0.01));
+        assert!(approx_eq!(
+            f64,
+            period_info.interest,
+            416.67,
+            epsilon = 0.01
+        ));
+        assert!(approx_eq!(
+            f64,
+            period_info.principal,
+            120.15,
+            epsilon = 0.01
+        ));
+        assert!(approx_eq!(
+            f64,
+            period_info.principal + period_info.interest,
+            payment,
+            epsilon = 0.01
+        ));
+        assert!(approx_eq!(
+            f64,
+            loan.principal,
+            period_info.ending_upb,
+            epsilon = 0.01
+        ));
         println!("{}", period_info)
     }
 
@@ -188,12 +231,16 @@ mod test {
         let mut period_infos = amort(loan);
         let vec = &period_infos.0;
         for (i, p) in enumerate(vec) {
-            assert!(approx_eq!(f64, p.principal + p.interest, payment, epsilon = 0.01))
+            assert!(approx_eq!(
+                f64,
+                p.principal + p.interest,
+                payment,
+                epsilon = 0.01
+            ))
         }
         match period_infos.last() {
             Some(ref p) => assert!(approx_eq!(f64, p.ending_upb, 0f64, epsilon = 0.01)),
-            None => panic!("No 'last' value found")
+            None => panic!("No 'last' value found"),
         }
-
     }
 }

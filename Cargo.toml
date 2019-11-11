@@ -5,7 +5,8 @@ authors = ["Kyle Prestel <kprestel@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-clap = "2.27.0"
+clap = "~2.33.0"
 
 [dev-dependencies]
-float-cmp = "0.5.2"
+float-cmp = "~0.5.2"
+itertools = "0.8.1"
