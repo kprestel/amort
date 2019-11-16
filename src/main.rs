@@ -5,7 +5,11 @@ extern crate clap;
 extern crate float_cmp;
 
 use std::convert::TryInto;
-use std::fmt::{self, Error, Formatter};
+use std::error::Error;
+use std::fmt::{self, Formatter};
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
 use std::str::FromStr;
 
 use clap::{App, Arg};
@@ -20,9 +24,9 @@ pub enum OutputType {
 }
 
 impl fmt::Display for OutputType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            OutputType::File(c) => write!(f, "File: {}", c),
+            OutputType::File(ref c) => write!(f, "File: {}", c),
             OutputType::Stdout => write!(f, "stdout"),
         }
     }
@@ -36,7 +40,7 @@ impl List {
 }
 
 impl fmt::Display for List {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let vec = &self.0;
 
         for v in vec.iter() {
@@ -168,11 +172,19 @@ fn main() {
 
     let principal = value_t!(matches, "principal", f64).unwrap();
     let rate = value_t!(matches, "rate", f64).unwrap();
-    let period = value_t!(matches, "period", i32).unwrap();
-    let output: Option<&str> = Option::from(matches.value_of("output").unwrap());
+    let period = value_t!(matches, "periods", i32).unwrap();
+    let mut output: Option<&str> = None;
+    if let Some(o) = matches.value_of("output") {
+        println!("Using output file: {:?}", o);
+        output = Some(o);
+    }
     let output_type: OutputType = match output {
         Some(ref e) => OutputType::File(e.to_string()),
         None => OutputType::Stdout,
+    };
+    let out_path = match output_type {
+        OutputType::File(ref p) => Some(Path::new(p)),
+        OutputType::Stdout => None,
     };
 
     println!("output type: {}", output_type);
@@ -181,7 +193,20 @@ fn main() {
     println!("{}", loan);
 
     let amort = amort(loan);
-    println!("{}", amort);
+    if let Some(p) = out_path {
+        let display = p.display();
+        let mut file = match File::create(p) {
+            Err(why) => panic!("Couldn't create {}: {}", display, why.description()),
+            Ok(file) => file,
+        };
+
+        match file.write_all(amort.to_string().as_bytes()) {
+            Err(why) => panic!("Couldn't write to {}: {}", display, why.description()),
+            Ok(_) => println!("Successfully wrote to {}", display),
+        }
+    } else {
+        println!("{}", amort);
+    }
 }
 
 #[cfg(test)]
