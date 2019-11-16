@@ -1,8 +1,12 @@
+#[cfg(test)]
+extern crate assert_cmd;
 #[macro_use]
 extern crate clap;
 #[cfg(test)]
 #[macro_use]
 extern crate float_cmp;
+#[cfg(test)]
+extern crate tempfile;
 
 use std::convert::TryInto;
 use std::error::Error;
@@ -211,7 +215,13 @@ fn main() {
 
 #[cfg(test)]
 mod test {
+    use std::fs::File;
+    use std::io::{self, BufRead, BufReader, Read, Write};
+    use std::process::Command;
+
+    use assert_cmd::prelude::*;
     use itertools::enumerate;
+    use tempfile::NamedTempFile;
 
     use crate::{amort, amort_period, LoanInfo};
 
@@ -267,5 +277,34 @@ mod test {
             Some(ref p) => assert!(approx_eq!(f64, p.ending_upb, 0f64, epsilon = 0.01)),
             None => panic!("No 'last' value found"),
         }
+    }
+
+    #[test]
+    fn test_cli_file_output() {
+        let mut f = NamedTempFile::new().unwrap();
+        let path = f.into_temp_path();
+        let path_str = path.as_os_str();
+        let mut cmd = Command::cargo_bin("amort").unwrap();
+        cmd.arg("-p")
+            .arg("100")
+            .arg("-r")
+            .arg(".0123")
+            .arg("-n")
+            .arg("360")
+            .arg("-o")
+            .arg(path_str);
+        let output = cmd.output().unwrap();
+        let stdout = output.stdout;
+        println!("stdout: {:?}", stdout);
+        let assert = cmd.assert();
+        assert.success();
+        let input = File::open(path).unwrap();
+        let buf = BufReader::new(input);
+
+        let mut i = 0;
+        for _line in buf.lines() {
+            i += 1;
+        }
+        assert_eq!(i, 360);
     }
 }
